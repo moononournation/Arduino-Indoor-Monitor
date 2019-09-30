@@ -1,6 +1,6 @@
 #include <SPI.h>
 #include <Arduino_HWSPI.h>
-#include <Arduino_GFX.h>     // Core graphics library by Adafruit
+#include <Arduino_GFX.h>     // Core graphics library derived from Adafruit_GFX
 #include <Arduino_ST7735.h>  // Hardware-specific library for ST7735 (with or without CS pin)
 #include "FreeSerif9pt7b.h"
 #include "FreeMonoBold9pt7b.h"
@@ -15,7 +15,6 @@ Arduino_ST7735 *tft = new Arduino_ST7735(bus, 17 /* RST */, 2 /* rotation */, fa
 DHTesp dht;
 
 void tempTask(void *pvParameters);
-void getAir();
 bool getTemperature();
 void triggerGetTemp();
 
