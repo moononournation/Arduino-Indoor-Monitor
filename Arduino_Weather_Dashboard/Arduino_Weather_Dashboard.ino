@@ -1,15 +1,38 @@
+/* WiFi settings */
+#define SSID_NAME "YourAP"
+#define SSID_PASSWORD "PleaseInputYourPasswordHere"
+#define NTP_SERVER "stdtime.gov.hk"
+#define GMT_OFFSET_SEC 28800L  // Timezone +0800
+#define DAYLIGHT_OFFSET_SEC 0L // no daylight saving
+#define UPDATE_INTERVAL 4      // sensors update interval in seconds
+#define WEATHER_RSS_URL "http://rss.weather.gov.hk/rss/CurrentWeather.xml"
+
+/* display settings */
 #include <SPI.h>
-#include <Arduino_HWSPI.h>
+#include <Arduino_ESP32SPI.h>
 #include <Arduino_GFX.h>    // Core graphics library derived from Adafruit_GFX
 #include <Arduino_ST7735.h> // Hardware-specific library for ST7735 (with or without CS pin)
-#include "FreeMonoBold9pt7b.h"
-#include <DHTesp.h>
-#include <Ticker.h>
 
-#define TFT_BL 22
-
-Arduino_HWSPI *bus = new Arduino_HWSPI(16 /* DC */, 5 /* CS */, 18 /* SCK */, 23 /* MOSI */, 19 /* MISO */);
+Arduino_ESP32SPI *bus = new Arduino_ESP32SPI(16 /* DC */, 5 /* CS */, 18 /* SCK */, 23 /* MOSI */, 19 /* MISO */);
 Arduino_ST7735 *tft = new Arduino_ST7735(bus, 17 /* RST */, 2 /* rotation */, false /* IPS */, 128 /* width */, 160 /* height */, 0 /* col offset 1 */, 0 /* row offset 1 */, 0 /* col offset 2 */, 0 /* row offset 2 */, false /* BGR */);
+#define TFT_BL 22
+#define AIR_PIN 34
+#define DHT_PIN 21
+
+#include <esp_jpg_decode.h>
+#include <esp_task_wdt.h>
+#include <HTTPClient.h>
+#include <Ticker.h>
+#include <time.h>
+#include <WiFi.h>
+
+#include <DHTesp.h>
+#include "FreeMonoBold9pt7b.h"
+
+static struct tm timeinfo;
+static int8_t last_rss_update_hour = -1;
+static HTTPClient http;
+static int len;
 
 DHTesp dht;
 uint16_t panel_color_1;
@@ -31,9 +54,6 @@ Ticker tempTicker;
 ComfortState cf;
 /** Flag if task should run */
 bool tasksEnabled = false;
-/** Pin number for DHT11 data pin */
-int airPin = 4;
-int dhtPin = 21;
 
 /**
  * initTemp
@@ -47,7 +67,7 @@ bool initTemp()
 {
   byte resultValue = 0;
   // Initialize temperature sensor
-  dht.setup(dhtPin, DHTesp::DHT11);
+  dht.setup(DHT_PIN, DHTesp::DHT11);
   Serial.println("DHT initiated");
 
   // Start task to get temperature
@@ -67,8 +87,8 @@ bool initTemp()
   }
   else
   {
-    // Start update of environment data every 20 seconds
-    tempTicker.attach(4, triggerGetTemp);
+    // Start update of environment data every UPDATE_INTERVAL
+    tempTicker.attach(UPDATE_INTERVAL, triggerGetTemp);
   }
   return true;
 }
@@ -126,7 +146,7 @@ bool updateIndoorData()
     return false;
   }
 
-  int air_quality = analogRead(airPin) * 100.0 / 4096.0;
+  int air_quality = analogRead(AIR_PIN) * 100.0 / 4096.0;
   int temperature = newValues.temperature;
   int humidity = newValues.humidity;
 
@@ -160,7 +180,101 @@ bool updateIndoorData()
   }
   tft->println(humidity);
 
+  // print time
+  tft->setFont(0);
+  tft->setCursor(97, 40);
+  tft->setTextColor(WHITE, BLACK);
+  getLocalTime(&timeinfo);
+  tft->println(&timeinfo, "%H:%M");
+
   return true;
+}
+
+void readWeatherRss()
+{
+  Serial.print("[HTTP] begin...\n");
+  http.begin(WEATHER_RSS_URL);
+
+  Serial.print("[HTTP] GET...\n");
+  int httpCode = http.GET();
+
+  Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+  // HTTP header has been send and Server response header has been handled
+  if (httpCode <= 0)
+  {
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+  }
+  else
+  {
+    if (httpCode != HTTP_CODE_OK)
+    {
+      Serial.printf("[HTTP] Not OK!\n");
+      delay(5000);
+    }
+    else
+    {
+      // get lenght of document (is -1 when Server sends no Content-Length header)
+      len = http.getSize();
+      Serial.printf("[HTTP] size: %d\n", len);
+
+      if (len <= 0)
+      {
+        Serial.printf("[HTTP] Unknow content size: %d\n", len);
+      }
+      else
+      {
+        String xml = http.getString();
+        int key_idx = xml.indexOf("Air temperature");
+        int val_start_idx = xml.indexOf(':', key_idx) + 1;
+        int val_end_idx = xml.indexOf("degrees", val_start_idx) - 1;
+        int temperature = xml.substring(val_start_idx, val_end_idx).toInt();
+        key_idx = xml.indexOf("Relative Humidity");
+        val_start_idx = xml.indexOf(':', key_idx) + 1;
+        val_end_idx = xml.indexOf("per", val_start_idx) - 1;
+        int humidity = xml.substring(val_start_idx, val_end_idx).toInt();
+        key_idx = xml.indexOf("UV Index");
+        val_start_idx = xml.indexOf(':', key_idx) + 1;
+        val_end_idx = xml.indexOf('\n', val_start_idx) - 1;
+        int uvIdx = xml.substring(val_start_idx, val_end_idx).toInt();
+
+        // print Observatory data
+        tft->setFont(&FreeMonoBold9pt7b);
+
+        tft->setCursor(8, 141);
+        tft->setTextColor(BLACK, panel_color_4);
+        if (uvIdx < 10)
+        {
+          tft->print(" ");
+        }
+        tft->println(uvIdx);
+
+        tft->setCursor(49, 141);
+        tft->setTextColor(BLACK, panel_color_5);
+        if (temperature < 10)
+        {
+          tft->print(" ");
+        }
+        tft->println(temperature);
+
+        tft->setCursor(92, 141);
+        tft->setTextColor(BLACK, panel_color_6);
+        if (humidity < 10)
+        {
+          tft->print(" ");
+        }
+        tft->println(humidity);
+
+        // print last update time
+        tft->setFont(0);
+        tft->setCursor(72, 152);
+        tft->setTextColor(WHITE, BLACK);
+        getLocalTime(&timeinfo);
+        tft->println(&timeinfo, "%H:%M");
+        last_rss_update_hour = timeinfo.tm_hour;
+      }
+    }
+  }
+  http.end();
 }
 
 void setup()
@@ -171,25 +285,20 @@ void setup()
 
   tft->begin();
   tft->fillScreen(BLACK);
-  tft->setTextColor(RED);
 
   tft->setFont(&FreeMonoBold9pt7b);
   tft->setCursor(0, 10);
+  tft->setTextColor(RED);
   tft->println("Weather");
   tft->setTextColor(YELLOW);
   tft->println("  Dashboard");
 
-  panel_color_1 = tft->color565(248,  64,  64);
-  panel_color_2 = tft->color565(248, 128,  16);
-  panel_color_3 = tft->color565(240, 240,  16);
-  panel_color_4 = tft->color565(128, 248,  16);
-  panel_color_5 = tft->color565( 16, 248, 128);
-  panel_color_6 = tft->color565( 64,  64, 248);
-
-#ifdef TFT_BL
-  pinMode(TFT_BL, OUTPUT);
-  digitalWrite(TFT_BL, HIGH);
-#endif
+  panel_color_1 = tft->color565(248, 64, 64);
+  panel_color_2 = tft->color565(248, 128, 16);
+  panel_color_3 = tft->color565(240, 240, 16);
+  panel_color_4 = tft->color565(128, 248, 16);
+  panel_color_5 = tft->color565(16, 248, 128);
+  panel_color_6 = tft->color565(64, 64, 248);
 
   tft->fillRoundRect(0, 50, 40, 40, 5, panel_color_1);
   tft->fillRoundRect(44, 50, 40, 40, 5, panel_color_2);
@@ -199,10 +308,13 @@ void setup()
   tft->fillRoundRect(44, 110, 40, 40, 5, panel_color_5);
   tft->fillRoundRect(88, 110, 40, 40, 5, panel_color_6);
 
-  tft->drawCircle(74, 71, 2, BLACK);
+  tft->drawCircle(75, 71, 2, BLACK);
+  tft->drawCircle(75, 131, 2, BLACK);
 
+  tft->setTextColor(BLACK);
   tft->setCursor(114, 81);
-  tft->setTextColor(BLACK, panel_color_3);
+  tft->print("%");
+  tft->setCursor(114, 141);
   tft->print("%");
 
   tft->setFont(0);
@@ -220,9 +332,38 @@ void setup()
   tft->println("Temp");
   tft->setCursor(96, 55);
   tft->println("Humi");
+  tft->setCursor(2, 115);
+  tft->println("UV Idx");
+  tft->setCursor(52, 115);
+  tft->println("Temp");
+  tft->setCursor(96, 115);
+  tft->println("Humi");
 
-  pinMode(airPin, INPUT);
+#ifdef TFT_BL
+  pinMode(TFT_BL, OUTPUT);
+  digitalWrite(TFT_BL, HIGH);
+#endif
+  pinMode(AIR_PIN, INPUT);
   initTemp();
+
+  WiFi.begin(SSID_NAME, SSID_PASSWORD);
+
+  // get time
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println(" CONNECTED");
+
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+
+  if (!getLocalTime(&timeinfo))
+  {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "NTP time: %A, %B %d %Y %H:%M:%S");
 
   // Signal end of setup() to tasks
   tasksEnabled = true;
@@ -241,5 +382,13 @@ void loop()
       vTaskResume(indoorDataTaskHandle);
     }
   }
+
+  getLocalTime(&timeinfo);
+  // RSS update interval: "Around 2 minutes past each hour and as necessary"
+  if ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7))
+  {
+    readWeatherRss();
+  }
+
   yield();
 }
