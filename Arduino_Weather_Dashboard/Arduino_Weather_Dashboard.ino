@@ -19,7 +19,6 @@ Arduino_ST7735 *tft = new Arduino_ST7735(bus, 17 /* RST */, 2 /* rotation */, fa
 #define AIR_PIN 34
 #define DHT_PIN 21
 
-#include <esp_jpg_decode.h>
 #include <esp_task_wdt.h>
 #include <HTTPClient.h>
 #include <Ticker.h>
@@ -30,7 +29,7 @@ Arduino_ST7735 *tft = new Arduino_ST7735(bus, 17 /* RST */, 2 /* rotation */, fa
 #include "FreeMonoBold9pt7b.h"
 
 static struct tm timeinfo;
-static int8_t last_rss_update_hour = -1;
+static int8_t last_rss_update_hour = -2; // never updated
 static HTTPClient http;
 static int len;
 
@@ -146,7 +145,7 @@ bool updateIndoorData()
     return false;
   }
 
-  int air_quality = analogRead(AIR_PIN) * 100.0 / 4096.0;
+  float air_quality = analogRead(AIR_PIN) * 10.0 / 4096.0;
   int temperature = newValues.temperature;
   int humidity = newValues.humidity;
 
@@ -156,15 +155,11 @@ bool updateIndoorData()
   // print indoor data
   tft->setFont(&FreeMonoBold9pt7b);
 
-  tft->setCursor(8, 81);
+  tft->setCursor(3, 81);
   tft->setTextColor(BLACK, panel_color_1);
-  if (air_quality < 10)
-  {
-    tft->print(" ");
-  }
-  tft->println(air_quality);
+  tft->println(air_quality, 1);
 
-  tft->setCursor(49, 81);
+  tft->setCursor(50, 81);
   tft->setTextColor(BLACK, panel_color_2);
   if (temperature < 10)
   {
@@ -172,7 +167,7 @@ bool updateIndoorData()
   }
   tft->println(temperature);
 
-  tft->setCursor(92, 81);
+  tft->setCursor(91, 81);
   tft->setTextColor(BLACK, panel_color_3);
   if (humidity < 10)
   {
@@ -224,31 +219,38 @@ void readWeatherRss()
       else
       {
         String xml = http.getString();
-        int key_idx = xml.indexOf("Air temperature");
-        int val_start_idx = xml.indexOf(':', key_idx) + 1;
-        int val_end_idx = xml.indexOf("degrees", val_start_idx) - 1;
+        int key_idx = xml.indexOf("updated at");
+        int val_start_idx = key_idx + 10;
+        int val_end_idx = xml.indexOf(':', val_start_idx);
+        int update_hour = xml.substring(val_start_idx, val_end_idx).toInt();
+        key_idx = xml.indexOf("Air temperature");
+        val_start_idx = xml.indexOf(':', key_idx) + 1;
+        val_end_idx = xml.indexOf("degrees", val_start_idx);
         int temperature = xml.substring(val_start_idx, val_end_idx).toInt();
         key_idx = xml.indexOf("Relative Humidity");
         val_start_idx = xml.indexOf(':', key_idx) + 1;
-        val_end_idx = xml.indexOf("per", val_start_idx) - 1;
+        val_end_idx = xml.indexOf("per", val_start_idx);
         int humidity = xml.substring(val_start_idx, val_end_idx).toInt();
         key_idx = xml.indexOf("UV Index");
         val_start_idx = xml.indexOf(':', key_idx) + 1;
-        val_end_idx = xml.indexOf('\n', val_start_idx) - 1;
+        val_end_idx = xml.indexOf('\n', val_start_idx);
         int uvIdx = xml.substring(val_start_idx, val_end_idx).toInt();
 
         // print Observatory data
         tft->setFont(&FreeMonoBold9pt7b);
 
-        tft->setCursor(8, 141);
         tft->setTextColor(BLACK, panel_color_4);
         if (uvIdx < 10)
         {
-          tft->print(" ");
+          tft->setCursor(14, 141);
+        }
+        else
+        {
+          tft->setCursor(9, 141);
         }
         tft->println(uvIdx);
 
-        tft->setCursor(49, 141);
+        tft->setCursor(50, 141);
         tft->setTextColor(BLACK, panel_color_5);
         if (temperature < 10)
         {
@@ -256,7 +258,7 @@ void readWeatherRss()
         }
         tft->println(temperature);
 
-        tft->setCursor(92, 141);
+        tft->setCursor(91, 141);
         tft->setTextColor(BLACK, panel_color_6);
         if (humidity < 10)
         {
@@ -266,11 +268,11 @@ void readWeatherRss()
 
         // print last update time
         tft->setFont(0);
-        tft->setCursor(72, 152);
+        tft->setCursor(78, 152);
         tft->setTextColor(WHITE, BLACK);
         getLocalTime(&timeinfo);
         tft->println(&timeinfo, "%H:%M");
-        last_rss_update_hour = timeinfo.tm_hour;
+        last_rss_update_hour = (update_hour == 23) ? -1 : update_hour;
       }
     }
   }
@@ -308,13 +310,13 @@ void setup()
   tft->fillRoundRect(44, 110, 40, 40, 5, panel_color_5);
   tft->fillRoundRect(88, 110, 40, 40, 5, panel_color_6);
 
-  tft->drawCircle(75, 71, 2, BLACK);
-  tft->drawCircle(75, 131, 2, BLACK);
+  tft->drawCircle(75, 70, 2, BLACK);
+  tft->drawCircle(75, 130, 2, BLACK);
 
   tft->setTextColor(BLACK);
-  tft->setCursor(114, 81);
+  tft->setCursor(113, 81);
   tft->print("%");
-  tft->setCursor(114, 141);
+  tft->setCursor(113, 141);
   tft->print("%");
 
   tft->setFont(0);
@@ -385,7 +387,7 @@ void loop()
 
   getLocalTime(&timeinfo);
   // RSS update interval: "Around 2 minutes past each hour and as necessary"
-  if ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7))
+  if ((timeinfo.tm_hour > last_rss_update_hour + 1) || ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7)))
   {
     readWeatherRss();
   }
