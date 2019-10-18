@@ -2,10 +2,10 @@
 #include <WiFi.h>
 #define SSID_NAME "YourAP"
 #define SSID_PASSWORD "PleaseInputYourPasswordHere"
-#define NTP_SERVER "stdtime.gov.hk"
+#define NTP_SERVER "pool.ntp.org"
 #define GMT_OFFSET_SEC 28800L  // Timezone +0800
 #define DAYLIGHT_OFFSET_SEC 0L // no daylight saving
-#define UPDATE_INTERVAL 4      // sensors update interval in seconds
+#define UPDATE_INTERVAL 10000  // sensors update interval in milliseconds
 #define WEATHER_RSS_URL "http://rss.weather.gov.hk/rss/CurrentWeather.xml"
 
 /* display settings */
@@ -314,9 +314,6 @@ void setup()
   // Connect WiFi
   WiFi.begin(SSID_NAME, SSID_PASSWORD);
 
-  // Initialize NTP settings
-  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-
   // Initialize temperature sensor
   dht.setup(DHT_PIN, DHTesp::DHT11);
   Serial.println("DHT initiated");
@@ -422,11 +419,16 @@ void loop()
         updateRss();
       }
     }
+    else
+    {
+      // Initialize NTP settings
+      configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+    }
   }
 
   // let system do background task
   yield();
 
   // wait a while for next update
-  delay(2000);
+  delay(UPDATE_INTERVAL);
 }
