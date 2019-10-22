@@ -35,9 +35,12 @@ static struct tm timeinfo;
 /* decode PNG library */
 #include <pngle.h>
 
+/* SPIFFS temp file system for storing image cache */
+#include "FS.h"
+#include "SPIFFS.h"
+
 /* static variables */
 static int8_t last_rss_update_hour = -2; // never updated
-static int len;
 static char png_url[128];
 static uint16_t panel_color_1;
 static uint16_t panel_color_2;
@@ -64,60 +67,74 @@ void pngle_on_draw(pngle_t *pngle, uint32_t x, uint32_t y, uint32_t w, uint32_t 
  * @return bool
  *    true if load success
 */
-bool load_png(const char *url)
+bool load_png(String png_url)
 {
-  // get URL
-  http.begin(url);
-  int httpCode = http.GET();
-  if (httpCode != HTTP_CODE_OK)
+  int key_idx = png_url.indexOf("img/");
+  int val_start_idx = key_idx + 3;
+  int val_end_idx = png_url.length();
+  String filename = png_url.substring(val_start_idx, val_end_idx);
+
+  File file;
+  uint8_t buf[2048];
+  char *buff = (char *)buf;
+  size_t size;
+  int len;
+
+  if (!SPIFFS.exists(filename))
   {
-    Serial.printf("HTTP ERROR: %d\n", httpCode);
+    Serial.println(filename + " not exists in local, download from internet.");
+
+    // get URL
+    http.begin(png_url);
+    int httpCode = http.GET();
+    if (httpCode != HTTP_CODE_OK)
+    {
+      Serial.printf("HTTP ERROR: %d\n", httpCode);
+      http.end();
+      return false;
+    }
+
+    WiFiClient *stream = http.getStreamPtr();
+    file = SPIFFS.open(filename, FILE_WRITE);
+    while (size_t size = stream->available())
+    {
+      len = stream->readBytes(buf, size);
+      file.write(buf, len);
+    }
+
     http.end();
-    return false;
+    file.close();
   }
 
-  // stream to PNG decoder
-  WiFiClient *stream = http.getStreamPtr();
+  // file stream to PNG decoder
+  Serial.println("stream local file to PNG decoder");
+  file = SPIFFS.open(filename, FILE_READ);
   pngle_t *pngle = pngle_new();
   pngle_set_draw_callback(pngle, pngle_on_draw);
-  uint8_t buf[2048];
   int remain = 0;
-  while (http.connected())
+  while (size = file.available())
   {
-    size_t size = stream->available();
-    if (!size)
-    {
-      delay(1);
-      continue;
-    }
     if (size > sizeof(buf) - remain)
     {
       size = sizeof(buf) - remain;
     }
 
-    int len = stream->readBytes(buf + remain, size);
-    if (len > 0)
+    len = file.readBytes(buff + remain, size);
+    int fed = pngle_feed(pngle, buff, remain + len);
+    if (fed < 0)
     {
-      int fed = pngle_feed(pngle, buf, remain + len);
-      if (fed < 0)
-      {
-        Serial.printf("ERROR: %s\n", pngle_error(pngle));
-        break;
-      }
+      Serial.printf("ERROR: %s\n", pngle_error(pngle));
+      break;
+    }
 
-      remain = remain + len - fed;
-      if (remain > 0)
-        memmove(buf, buf + fed, remain);
-    }
-    else
-    {
-      delay(1);
-    }
+    remain = remain + len - fed;
+    if (remain > 0)
+      memmove(buff, buff + fed, remain);
   }
 
   pngle_destroy(pngle);
+  file.close();
 
-  http.end();
   return true;
 }
 
@@ -152,7 +169,7 @@ bool updateRss()
   }
 
   // get length of document (is -1 when Server sends no Content-Length header)
-  len = http.getSize();
+  int len = http.getSize();
   Serial.printf("[HTTP] size: %d\n", len);
 
   if (len <= 0)
@@ -175,7 +192,7 @@ bool updateRss()
   key_idx = xml.indexOf("img", val_end_idx);
   val_start_idx = xml.indexOf('"', key_idx) + 1;
   val_end_idx = xml.indexOf('"', val_start_idx);
-  xml.substring(val_start_idx, val_end_idx).toCharArray(png_url, sizeof(png_url));
+  String png_url = xml.substring(val_start_idx, val_end_idx);
   // Air temperature
   key_idx = xml.indexOf("Air temperature");
   val_start_idx = xml.indexOf(':', key_idx) + 1;
@@ -314,6 +331,16 @@ void setup()
   // Connect WiFi
   WiFi.begin(SSID_NAME, SSID_PASSWORD);
 
+  // Initialize NTP settings
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+
+  // Initialize SPIFFS
+  if (!SPIFFS.begin(true))
+  {
+    Serial.println("SPIFFS init Failed");
+    return;
+  }
+
   // Initialize temperature sensor
   dht.setup(DHT_PIN, DHTesp::DHT11);
   Serial.println("DHT initiated");
@@ -412,17 +439,16 @@ void loop()
   // HK Observatory RSS update interval: "Around 2 minutes past each hour and as necessary"
   if (WiFi.status() == WL_CONNECTED)
   {
-    if (getLocalTime(&timeinfo))
+    if (last_rss_update_hour == -2)
+    {
+        updateRss();
+    }
+    else if (getLocalTime(&timeinfo))
     {
       if ((timeinfo.tm_hour > last_rss_update_hour + 1) || ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7)))
       {
         updateRss();
       }
-    }
-    else
-    {
-      // Initialize NTP settings
-      configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
     }
   }
 
