@@ -5,7 +5,7 @@
 #define NTP_SERVER "pool.ntp.org"
 #define GMT_OFFSET_SEC 28800L  // Timezone +0800
 #define DAYLIGHT_OFFSET_SEC 0L // no daylight saving
-#define UPDATE_INTERVAL 10000  // sensors update interval in milliseconds
+#define UPDATE_INTERVAL 10     // sensors update interval in seconds
 #define WEATHER_RSS_URL "http://rss.weather.gov.hk/rss/CurrentWeather.xml"
 
 /* display settings */
@@ -185,9 +185,10 @@ bool updateRss()
 
   // update hour
   int key_idx = xml.indexOf("updated at");
-  int val_start_idx = key_idx + 10;
+  int val_start_idx = key_idx + 11;
   int val_end_idx = xml.indexOf(':', val_start_idx);
   int update_hour = xml.substring(val_start_idx, val_end_idx).toInt();
+  String update_time = xml.substring(val_end_idx - 2, val_end_idx + 3);
   // weather image
   key_idx = xml.indexOf("img", val_end_idx);
   val_start_idx = xml.indexOf('"', key_idx) + 1;
@@ -246,8 +247,7 @@ bool updateRss()
   tft->setFont(0);
   tft->setCursor(97, 52);
   tft->setTextColor(LIGHTGREY, BLACK);
-  getLocalTime(&timeinfo);
-  tft->println(&timeinfo, "%H:%M");
+  tft->println(update_time);
   last_rss_update_hour = (update_hour == 23) ? -1 : update_hour;
 
   // load weather PNG icon
@@ -437,17 +437,35 @@ void loop()
   updateIndoorData();
 
   // HK Observatory RSS update interval: "Around 2 minutes past each hour and as necessary"
-  if (WiFi.status() == WL_CONNECTED)
+  if (last_rss_update_hour == -2)
   {
-    if (last_rss_update_hour == -2)
+    if (WiFi.status() == WL_CONNECTED)
     {
-        updateRss();
+      updateRss();
     }
-    else if (getLocalTime(&timeinfo))
+  }
+  else if (getLocalTime(&timeinfo))
+  {
+    if ((timeinfo.tm_hour > last_rss_update_hour + 1) || ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7)))
     {
-      if ((timeinfo.tm_hour > last_rss_update_hour + 1) || ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7)))
+      if (WiFi.status() == WL_CONNECTED)
       {
         updateRss();
+      }
+      else
+      {
+        // reconnect WiFi
+        WiFi.begin(SSID_NAME, SSID_PASSWORD);
+        int wait_count = 0;
+        while ((WiFi.status() != WL_CONNECTED) && (wait_count < 10))
+        {
+          delay(500);
+          wait_count++;
+        }
+        if (WiFi.status() == WL_CONNECTED)
+        {
+          updateRss();
+        }
       }
     }
   }
@@ -455,6 +473,13 @@ void loop()
   // let system do background task
   yield();
 
-  // wait a while for next update
-  delay(UPDATE_INTERVAL);
+  if (getLocalTime(&timeinfo)) {
+    // sleep a while for next update
+    esp_sleep_enable_timer_wakeup(UPDATE_INTERVAL * 1000000); // seconds to nanoseconds
+    esp_light_sleep_start();
+  }
+  else
+  {
+    delay(UPDATE_INTERVAL * 1000); // seconds to milliseconds
+  }
 }
