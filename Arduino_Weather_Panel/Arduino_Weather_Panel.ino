@@ -96,13 +96,25 @@ bool load_png(String png_url)
 
     WiFiClient *stream = http.getStreamPtr();
     file = SPIFFS.open(filename, FILE_WRITE);
-    while (size_t size = stream->available())
+    while (http.connected())
     {
-      len = stream->readBytes(buf, size);
-      file.write(buf, len);
+      size_t size = stream->available();
+      if (!size)
+      {
+        delay(1);
+      }
+      else
+      {
+        if (size > sizeof(buf)) {
+          size = sizeof(buf);
+        }
+        len = stream->readBytes(buf, size);
+        file.write(buf, len);
+      }
     }
 
     http.end();
+    file.flush();
     file.close();
   }
 
@@ -331,16 +343,6 @@ void setup()
   // Connect WiFi
   WiFi.begin(SSID_NAME, SSID_PASSWORD);
 
-  // Initialize NTP settings
-  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-
-  // Initialize SPIFFS
-  if (!SPIFFS.begin(true))
-  {
-    Serial.println("SPIFFS init Failed");
-    return;
-  }
-
   // Initialize temperature sensor
   dht.setup(DHT_PIN, DHTesp::DHT11);
   Serial.println("DHT initiated");
@@ -427,6 +429,16 @@ void setup()
   digitalWrite(TFT_BL, HIGH);
 #endif
   pinMode(AIR_PIN, INPUT);
+
+  // Initialize NTP settings
+  configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+
+  // Initialize SPIFFS
+  if (!SPIFFS.begin(true))
+  {
+    Serial.println("SPIFFS init Failed");
+    return;
+  }
 }
 
 void loop()
@@ -473,7 +485,8 @@ void loop()
   // let system do background task
   yield();
 
-  if (getLocalTime(&timeinfo)) {
+  if (getLocalTime(&timeinfo))
+  {
     // sleep a while for next update
     esp_sleep_enable_timer_wakeup(UPDATE_INTERVAL * 1000000); // seconds to nanoseconds
     esp_light_sleep_start();
