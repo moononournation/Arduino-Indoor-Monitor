@@ -235,7 +235,7 @@ bool updateRss()
   {
     tft->setCursor(9, 93);
   }
-  tft->println(uvIdx);
+  tft->print(uvIdx);
 
   // Air temperature
   tft->setCursor(50, 93);
@@ -244,7 +244,7 @@ bool updateRss()
   {
     tft->print(" ");
   }
-  tft->println(temperature);
+  tft->print(temperature);
 
   // Relative Humidity
   tft->setCursor(91, 93);
@@ -253,13 +253,13 @@ bool updateRss()
   {
     tft->print(" ");
   }
-  tft->println(humidity);
+  tft->print(humidity);
 
   // print last update time
   tft->setFont(0);
   tft->setCursor(97, 52);
   tft->setTextColor(LIGHTGREY, BLACK);
-  tft->println(update_time);
+  tft->print(update_time);
   last_rss_update_hour = (update_hour == 23) ? -1 : update_hour;
 
   // load weather PNG icon
@@ -282,7 +282,7 @@ bool updateIndoorData()
     tft->setFont(0);
     tft->setCursor(97, 108);
     tft->setTextColor(LIGHTGREY, BLACK);
-    tft->println(&timeinfo, "%H:%M");
+    tft->print(&timeinfo, "%H:%M");
   }
 
   // Reading temperature for humidity takes about 250 milliseconds!
@@ -299,16 +299,13 @@ bool updateIndoorData()
   int temperature = newValues.temperature;
   int humidity = newValues.humidity;
 
-  // for Serial Plotter
-  Serial.println(String(air_quality) + " " + String(temperature) + " " + String(humidity));
-
   // print indoor data
   tft->setFont(&FreeMonoBold9pt7b);
 
   // Air Quality
   tft->setCursor(3, 149);
   tft->setTextColor(BLACK, panel_color_4);
-  tft->println(air_quality, 1);
+  tft->print(air_quality, 1);
 
   // Air temperature
   tft->setCursor(50, 149);
@@ -317,7 +314,7 @@ bool updateIndoorData()
   {
     tft->print(" ");
   }
-  tft->println(temperature);
+  tft->print(temperature);
 
   // Relative Humidity
   tft->setCursor(91, 149);
@@ -326,7 +323,10 @@ bool updateIndoorData()
   {
     tft->print(" ");
   }
-  tft->println(humidity);
+  tft->print(humidity);
+
+  // for Serial Plotter
+  Serial.println(String(air_quality) + " " + String(temperature) + " " + String(humidity));
 
   return true;
 }
