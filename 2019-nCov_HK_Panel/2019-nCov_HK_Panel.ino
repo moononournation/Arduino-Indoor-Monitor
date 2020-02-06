@@ -747,6 +747,7 @@ void loop()
     {
       if (WiFi.status() == WL_CONNECTED)
       {
+        updateChp();
         updateRss();
       }
       else
@@ -761,6 +762,7 @@ void loop()
         }
         if (WiFi.status() == WL_CONNECTED)
         {
+          updateChp();
           updateRss();
         }
       }
