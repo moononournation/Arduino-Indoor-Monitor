@@ -7,11 +7,10 @@
 #define DAYLIGHT_OFFSET_SEC 0L // no daylight saving
 #define UPDATE_INTERVAL 10     // sensors update interval in seconds
 
-static char* chp_dashboard_url = "https://chp-dashboard.geodata.gov.hk/nia/en.html";
-static char* chp_cases_url_template = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/LatestReportHistory_View/FeatureServer/0/query?where=As_of_date%s3D%s27%02d%s2F%02d%s2F%d%s27&outFields=*&f=pjson";
-// static char* chp_cases_url_template = "%s3D%s27%02d%s2F%02d%s2F%d%s27";
-static char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Death%27&returnCountOnly=true&f=pjson";
-static char* hko_weather_rss_url = "http://rss.weather.gov.hk/rss/CurrentWeather.xml";
+const char* chp_dashboard_url = "https://chp-dashboard.geodata.gov.hk/nia/en.html";
+const char* chp_cases_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/LatestReport_LIM_View/FeatureServer/0/query?f=json&where=1%3D1&returnGeometry=false&spatialRel=esriSpatialRelIntersects&outFields=*&outSR=102100&resultOffset=0&resultRecordCount=50&cacheHint=true";
+const char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Deceased%27&returnCountOnly=true&f=json";
+const char* hko_weather_rss_url = "http://rss.weather.gov.hk/rss/CurrentWeather.xml";
 
 // HTTPS howto: https://techtutorialsx.com/2017/11/18/esp32-arduino-https-get-request/
 const char* gov_root_ca = \
@@ -139,14 +138,14 @@ bool load_png(String png_url)
 
   if (!SPIFFS.exists(filename))
   {
-    Serial.println(filename + " not exists in local, download from internet.");
+    log_i("%s not exists in local, download from internet.", filename);
 
     // get URL
     http.begin(png_url);
     int httpCode = http.GET();
     if (httpCode != HTTP_CODE_OK)
     {
-      Serial.printf("HTTP ERROR: %d\n", httpCode);
+      log_e("HTTP ERROR: %d", httpCode);
       http.end();
       return false;
     }
@@ -176,7 +175,7 @@ bool load_png(String png_url)
   }
 
   // file stream to PNG decoder
-  Serial.println("stream local file to PNG decoder");
+  log_i("stream local file to PNG decoder");
   file = SPIFFS.open(filename, FILE_READ);
   pngle_t *pngle = pngle_new();
   pngle_set_draw_callback(pngle, pngle_on_draw);
@@ -192,7 +191,7 @@ bool load_png(String png_url)
     int fed = pngle_feed(pngle, buff, remain + len);
     if (fed < 0)
     {
-      Serial.printf("ERROR: %s\n", pngle_error(pngle));
+      log_e("ERROR: %s\n", pngle_error(pngle));
       break;
     }
 
@@ -207,42 +206,33 @@ bool load_png(String png_url)
   return true;
 }
 
-String getHttpsReturnStr(char* url, const char* root_ca) {
+String getHttpsReturnStr(const char* url, const char* root_ca) {
   HTTPClient https;
   String result;
 
-  Serial.print("[HTTPS] begin...\n");
+  log_i("[HTTPS] begin...\n");
   https.begin(url, root_ca);
 
-  Serial.print("[HTTPS] GET...\n");
+  log_i("[HTTPS] GET...\n");
   int httpCode = https.GET();
 
-  Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+  log_i("[HTTPS] GET... code: %d\n", httpCode);
   // HTTP header has been send and Server response header has been handled
   if (httpCode <= 0)
   {
-    Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+    log_e("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
     https.end();
     return result;
   }
 
   if (httpCode != HTTP_CODE_OK)
   {
-    Serial.printf("[HTTPS] Not OK!\n");
+    log_e("[HTTPS] Not OK!\n");
     https.end();
     return result;
   }
 
-  // get length of document (is -1 when Server sends no Content-Length header)
-  int len = https.getSize();
-  Serial.printf("[HTTPS] size: %d\n", len);
-
-  if (len <= 0)
-  {
-    Serial.printf("[HTTPS] Unknow content size: %d\n", len);
-    https.end();
-    return result;
-  }
+  delay(100);
 
   result = https.getString();
   https.end();
@@ -258,11 +248,8 @@ bool updateChp()
 {
   getHttpsReturnStr(chp_dashboard_url, gov_root_ca);
 
-  char chp_cases_url[1024];
-  sprintf(chp_cases_url, chp_cases_url_template, "%", "%", timeinfo.tm_mday - 1, "%", timeinfo.tm_mon + 1, "%", timeinfo.tm_year + 1900, "%");
-  Serial.println(chp_cases_url);
   String json = getHttpsReturnStr(chp_cases_url, arcgis_root_ca);
-  // Serial.println(json);
+  log_d("return: %s", json.c_str());
 
   // confirmed cases count
   int key_idx = json.indexOf("features");
@@ -273,26 +260,26 @@ bool updateChp()
   // ruled out cases count
   key_idx = json.indexOf("Number_of_ruled_out_cases", val_end_idx);
   val_start_idx = json.indexOf(':', key_idx) + 1;
-  val_end_idx = json.indexOf("\n", val_start_idx);
+  val_end_idx = json.indexOf(",", val_start_idx);
   int ruled_out_count = json.substring(val_start_idx, val_end_idx).toInt();
   // Investigation cases count
   key_idx = json.indexOf("Number_of_cases_still_hospitali", val_end_idx);
   val_start_idx = json.indexOf(':', key_idx) + 1;
-  val_end_idx = json.indexOf("\n", val_start_idx);
+  val_end_idx = json.indexOf(",", val_start_idx);
   int investigation_count = json.substring(val_start_idx, val_end_idx).toInt();
   // reported cases count
   key_idx = json.indexOf("Number_of_cases_fulfilling_the_", val_end_idx);
   val_start_idx = json.indexOf(':', key_idx) + 1;
-  val_end_idx = json.indexOf("\n", val_start_idx);
+  val_end_idx = json.indexOf(",", val_start_idx);
   int reported_count = json.substring(val_start_idx, val_end_idx).toInt();
 
   json = getHttpsReturnStr(chp_death_json_url, arcgis_root_ca);
-  // Serial.println(json);
+  log_d("return: %s", json.c_str());
 
   // death count
   key_idx = json.indexOf("count");
   val_start_idx = json.indexOf(':', key_idx) + 1;
-  val_end_idx = json.indexOf("\n", val_start_idx);
+  val_end_idx = json.indexOf("}", val_start_idx);
   int death_count = json.substring(val_start_idx, val_end_idx).toInt();
 
   // print CHP data
@@ -412,48 +399,49 @@ bool updateChp()
 }
 
 /**
- * updateRss
+ * updateHko
  * Reads RSS feed from HK Observatory
  * @return bool
  *    true if update success
 */
-bool updateRss()
+bool updateHko()
 {
-  Serial.print("[HTTP] begin...\n");
+  log_i("[HTTP] begin...\n");
   http.begin(hko_weather_rss_url);
 
-  Serial.print("[HTTP] GET...\n");
+  log_i("[HTTP] GET...\n");
   int httpCode = http.GET();
 
-  Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+  log_i("[HTTP] GET... code: %d\n", httpCode);
   // HTTP header has been send and Server response header has been handled
   if (httpCode <= 0)
   {
-    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    log_i("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
     http.end();
     return false;
   }
 
   if (httpCode != HTTP_CODE_OK)
   {
-    Serial.printf("[HTTP] Not OK!\n");
+    log_i("[HTTP] Not OK!\n");
     http.end();
     return false;
   }
 
   // get length of document (is -1 when Server sends no Content-Length header)
   int len = http.getSize();
-  Serial.printf("[HTTP] size: %d\n", len);
+  log_i("[HTTP] size: %d\n", len);
 
   if (len <= 0)
   {
-    Serial.printf("[HTTP] Unknow content size: %d\n", len);
+    log_i("[HTTP] Unknow content size: %d\n", len);
     http.end();
     return false;
   }
 
   // get XML string
   String xml = http.getString();
+  log_d("return: %s", xml.c_str());
   http.end();
 
   // update hour
@@ -548,7 +536,7 @@ bool updateIndoorData()
   // Check if any reads failed and exit early (to try again).
   if (dht.getStatus() != 0)
   {
-    Serial.println("DHT11 error status: " + String(dht.getStatusString()));
+    log_i("DHT11 error status: %s", dht.getStatusString());
     return false;
   }
 
@@ -580,9 +568,6 @@ bool updateIndoorData()
   }
   tft->print(humidity);
 
-  // for Serial Plotter
-  Serial.println(String(air_quality) + " " + String(temperature) + " " + String(humidity));
-
   return true;
 }
 
@@ -590,17 +575,14 @@ void setup()
 {
   // put your setup code here, to run once:
 
-  // Initialize serial port
-  Serial.begin(115200);
-  Serial.println();
-  Serial.println("Novel Coronavirus Hong Kong Dashboard");
+  log_i("Novel Coronavirus Hong Kong Dashboard");
 
   // Connect WiFi
   WiFi.begin(SSID_NAME, SSID_PASSWORD);
 
   // Initialize temperature sensor
   dht.setup(DHT_PIN, DHTesp::DHT11);
-  Serial.println("DHT initiated");
+  log_i("DHT initiated");
 
   // Initialize display
   tft->begin();
@@ -608,7 +590,7 @@ void setup()
 
   // print WiFi MAC address
   String mac = WiFi.macAddress();
-  Serial.println(mac);
+  log_i("MAC address: %s", mac.c_str());
   tft->setTextColor(tft->color565(0, 16, 0));
   tft->setCursor(79, 110);
   tft->print(mac.substring(0, 8));
@@ -724,7 +706,7 @@ void setup()
   // Initialize SPIFFS
   if (!SPIFFS.begin(true))
   {
-    Serial.println("SPIFFS init Failed");
+    log_i("SPIFFS init Failed");
     return;
   }
 }
@@ -744,7 +726,7 @@ void loop()
       if (WiFi.status() == WL_CONNECTED)
       {
         updateChp();
-        updateRss();
+        updateHko();
       }
       else
       {
@@ -759,7 +741,7 @@ void loop()
         if (WiFi.status() == WL_CONNECTED)
         {
           updateChp();
-          updateRss();
+          updateHko();
         }
       }
     }
