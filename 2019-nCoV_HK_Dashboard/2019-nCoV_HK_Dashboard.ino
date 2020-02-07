@@ -7,10 +7,11 @@
 #define DAYLIGHT_OFFSET_SEC 0L // no daylight saving
 #define UPDATE_INTERVAL 10     // sensors update interval in seconds
 
-const char* chp_dashboard_url = "https://chp-dashboard.geodata.gov.hk/nia/en.html";
-const char* chp_cases_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/LatestReportHistory_View/FeatureServer/0/query?where=As_of_date%3D%2705%2F02%2F2020%27&outFields=*&f=pjson";
-const char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Death%27&returnCountOnly=true&f=pjson";
-const char* hko_weather_rss_url = "http://rss.weather.gov.hk/rss/CurrentWeather.xml";
+static char* chp_dashboard_url = "https://chp-dashboard.geodata.gov.hk/nia/en.html";
+static char* chp_cases_url_template = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/LatestReportHistory_View/FeatureServer/0/query?where=As_of_date%s3D%s27%02d%s2F%02d%s2F%d%s27&outFields=*&f=pjson";
+// static char* chp_cases_url_template = "%s3D%s27%02d%s2F%02d%s2F%d%s27";
+static char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Death%27&returnCountOnly=true&f=pjson";
+static char* hko_weather_rss_url = "http://rss.weather.gov.hk/rss/CurrentWeather.xml";
 
 // HTTPS howto: https://techtutorialsx.com/2017/11/18/esp32-arduino-https-get-request/
 const char* gov_root_ca = \
@@ -206,7 +207,7 @@ bool load_png(String png_url)
   return true;
 }
 
-String getHttpsReturnStr(const char* url, const char* root_ca) {
+String getHttpsReturnStr(char* url, const char* root_ca) {
   HTTPClient https;
   String result;
 
@@ -257,8 +258,11 @@ bool updateChp()
 {
   getHttpsReturnStr(chp_dashboard_url, gov_root_ca);
 
+  char chp_cases_url[1024];
+  sprintf(chp_cases_url, chp_cases_url_template, "%", "%", timeinfo.tm_mday - 1, "%", timeinfo.tm_mon + 1, "%", timeinfo.tm_year + 1900, "%");
+  Serial.println(chp_cases_url);
   String json = getHttpsReturnStr(chp_cases_url, arcgis_root_ca);
-  Serial.println(json);
+  // Serial.println(json);
 
   // confirmed cases count
   int key_idx = json.indexOf("features");
@@ -589,7 +593,7 @@ void setup()
   // Initialize serial port
   Serial.begin(115200);
   Serial.println();
-  Serial.println("Novel Coronavirus Hong Kong Panel");
+  Serial.println("Novel Coronavirus Hong Kong Dashboard");
 
   // Connect WiFi
   WiFi.begin(SSID_NAME, SSID_PASSWORD);
@@ -615,8 +619,8 @@ void setup()
   tft->setFont(&FreeMonoBold9pt7b);
   tft->setTextColor(WHITE);
   tft->setCursor(0, 12);
-  tft->print("2019-nCov");
-  tft->setCursor(106, 12);
+  tft->print("2019-nCoV");
+  tft->setCursor(105, 12);
   tft->print("HK");
   tft->setFont(0);
 
@@ -733,17 +737,9 @@ void loop()
   updateIndoorData();
 
   // HK Observatory RSS update interval: "Around 2 minutes past each hour and as necessary"
-  if (last_rss_update_hour == -2)
+  if (getLocalTime(&timeinfo))
   {
-    if (WiFi.status() == WL_CONNECTED)
-    {
-      updateChp();
-      updateRss();
-    }
-  }
-  else if (getLocalTime(&timeinfo))
-  {
-    if ((timeinfo.tm_hour > last_rss_update_hour + 1) || ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7)))
+    if ((last_rss_update_hour == -2) || (timeinfo.tm_hour > last_rss_update_hour + 1) || ((timeinfo.tm_hour > last_rss_update_hour) && (timeinfo.tm_min > 7)))
     {
       if (WiFi.status() == WL_CONNECTED)
       {
