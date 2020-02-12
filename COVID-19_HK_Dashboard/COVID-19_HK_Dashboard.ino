@@ -10,6 +10,7 @@
 const char* chp_dashboard_url = "https://chp-dashboard.geodata.gov.hk/nia/en.html";
 const char* chp_cases_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/LatestReport_LIM_View/FeatureServer/0/query?f=json&where=1%3D1&returnGeometry=false&spatialRel=esriSpatialRelIntersects&outFields=*&outSR=102100&resultOffset=0&resultRecordCount=50&cacheHint=true";
 const char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Deceased%27&returnCountOnly=true&f=json";
+const char* chp_dischgd_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Discharged%27&returnCountOnly=true&f=json";
 const char* hko_weather_rss_url = "http://rss.weather.gov.hk/rss/CurrentWeather.xml";
 
 // HTTPS howto: https://techtutorialsx.com/2017/11/18/esp32-arduino-https-get-request/
@@ -282,26 +283,35 @@ bool updateChp()
   val_end_idx = json.indexOf("}", val_start_idx);
   int death_count = json.substring(val_start_idx, val_end_idx).toInt();
 
+  json = getHttpsReturnStr(chp_dischgd_json_url, arcgis_root_ca);
+  log_d("return: %s", json.c_str());
+
+  // death count
+  key_idx = json.indexOf("count");
+  val_start_idx = json.indexOf(':', key_idx) + 1;
+  val_end_idx = json.indexOf("}", val_start_idx);
+  int dischgd_count = json.substring(val_start_idx, val_end_idx).toInt();
+
   // print CHP data
   // confirmed cases count
   tft->setTextColor(panel_color_01, dark_dark_grey);
   if (confirmed_count >= 1000)
   {
     tft->setFont(0);
-    tft->setCursor(9, 40);
+    tft->setCursor(9, 42);
   } else {
     tft->setFont(&FreeMonoBold9pt7b);
     if (confirmed_count >= 100)
     {
-      tft->setCursor(2, 48);
+      tft->setCursor(2, 50);
     }
     else if (confirmed_count >= 10)
     {
-      tft->setCursor(8, 48);
+      tft->setCursor(8, 50);
     }
     else
     {
-      tft->setCursor(13, 48);
+      tft->setCursor(13, 50);
     }
   }
   tft->print(confirmed_count);
@@ -310,42 +320,64 @@ bool updateChp()
   if (death_count >= 1000)
   {
     tft->setFont(0);
-    tft->setCursor(53, 40);
+    tft->setCursor(53, 42);
   } else {
     tft->setFont(&FreeMonoBold9pt7b);
     if (death_count >= 100)
     {
-      tft->setCursor(45, 48);
+      tft->setCursor(45, 50);
     }
     else if (death_count >= 10)
     {
-      tft->setCursor(51, 48);
+      tft->setCursor(51, 50);
     }
     else
     {
-      tft->setCursor(56, 48);
+      tft->setCursor(56, 50);
     }
   }
   tft->print(death_count);
+  // dischgd count
+  tft->setTextColor(panel_color_03, dark_dark_grey);
+  if (dischgd_count >= 1000)
+  {
+    tft->setFont(0);
+    tft->setCursor(96, 42);
+  } else {
+    tft->setFont(&FreeMonoBold9pt7b);
+    if (dischgd_count >= 100)
+    {
+      tft->setCursor(88, 50);
+    }
+    else if (dischgd_count >= 10)
+    {
+      tft->setCursor(94, 50);
+    }
+    else
+    {
+      tft->setCursor(99, 50);
+    }
+  }
+  tft->print(dischgd_count);
   // Investigation cases count
   tft->setTextColor(panel_color_04, dark_dark_grey);
   if (investigation_count >= 1000)
   {
     tft->setFont(0);
-    tft->setCursor(9, 82);
+    tft->setCursor(9, 84);
   } else {
     tft->setFont(&FreeMonoBold9pt7b);
     if (investigation_count >= 100)
     {
-      tft->setCursor(2, 90);
+      tft->setCursor(2, 92);
     }
     else if (investigation_count >= 10)
     {
-      tft->setCursor(8, 90);
+      tft->setCursor(8, 92);
     }
     else
     {
-      tft->setCursor(13, 90);
+      tft->setCursor(13, 92);
     }
   }
   tft->print(investigation_count);
@@ -354,20 +386,20 @@ bool updateChp()
   if (ruled_out_count >= 1000)
   {
     tft->setFont(0);
-    tft->setCursor(53, 82);
+    tft->setCursor(53, 84);
   } else {
     tft->setFont(&FreeMonoBold9pt7b);
     if (ruled_out_count >= 100)
     {
-      tft->setCursor(45, 90);
+      tft->setCursor(45, 92);
     }
     else if (ruled_out_count >= 10)
     {
-      tft->setCursor(51, 90);
+      tft->setCursor(51, 92);
     }
     else
     {
-      tft->setCursor(56, 90);
+      tft->setCursor(56, 92);
     }
   }
   tft->print(ruled_out_count);
@@ -376,20 +408,20 @@ bool updateChp()
   if (reported_count >= 1000)
   {
     tft->setFont(0);
-    tft->setCursor(96, 82);
+    tft->setCursor(96, 84);
   } else {
     tft->setFont(&FreeMonoBold9pt7b);
     if (reported_count >= 100)
     {
-      tft->setCursor(88, 90);
+      tft->setCursor(88, 92);
     }
     else if (reported_count >= 10)
     {
-      tft->setCursor(94, 90);
+      tft->setCursor(94, 92);
     }
     else
     {
-      tft->setCursor(99, 90);
+      tft->setCursor(99, 92);
     }
   }
   tft->print(reported_count);
@@ -601,16 +633,14 @@ void setup()
   tft->setFont(&FreeMonoBold9pt7b);
   tft->setTextColor(WHITE);
   tft->setCursor(0, 12);
-  tft->print("2019-nCoV");
-  tft->setCursor(105, 12);
-  tft->print("HK");
+  tft->print("COVID-19 HK");
   tft->setFont(0);
 
   // Initialize panel colors
   dark_dark_grey = tft->color565(8, 4, 8);
   panel_color_01 = tft->color565(255, 0, 0);
-  panel_color_02 = tft->color565(64, 64, 64);
-  panel_color_03 = tft->color565(0, 0, 255);
+  panel_color_02 = tft->color565(128, 128, 128);
+  panel_color_03 = tft->color565(16, 16, 255);
   panel_color_04 = tft->color565(255, 255, 0);
   panel_color_05 = tft->color565(0, 255, 0);
   panel_color_06 = tft->color565(255, 255, 255);
