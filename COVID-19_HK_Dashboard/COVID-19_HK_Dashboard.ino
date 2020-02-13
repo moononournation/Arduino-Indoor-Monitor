@@ -9,8 +9,8 @@
 
 const char* chp_dashboard_url = "https://chp-dashboard.geodata.gov.hk/nia/en.html";
 const char* chp_cases_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/LatestReport_LIM_View/FeatureServer/0/query?f=json&where=1%3D1&returnGeometry=false&spatialRel=esriSpatialRelIntersects&outFields=*&outSR=102100&resultOffset=0&resultRecordCount=50&cacheHint=true";
-const char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Deceased%27&returnCountOnly=true&f=json";
-const char* chp_dischgd_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_View/FeatureServer/0/query?where=Discharge_status%3D%27Discharged%27&returnCountOnly=true&f=json";
+const char* chp_death_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_0208_View/FeatureServer/0/query?where=Hospitalised_Discharged_Decease%3D%27Deceased%27&returnCountOnly=true&f=json";
+const char* chp_dischgd_json_url = "https://services8.arcgis.com/PXQv9PaDJHzt8rp0/arcgis/rest/services/HKConfirmedCases_0208_View/FeatureServer/0/query?where=Hospitalised_Discharged_Decease%3D%27Discharged%27&returnCountOnly=true&f=json";
 const char* hko_weather_rss_url = "http://rss.weather.gov.hk/rss/CurrentWeather.xml";
 
 // HTTPS howto: https://techtutorialsx.com/2017/11/18/esp32-arduino-https-get-request/
