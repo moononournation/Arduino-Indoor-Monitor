@@ -1,7 +1,4 @@
-#include <SPI.h>
-#include <Arduino_HWSPI.h>
-#include <Arduino_GFX.h>     // Core graphics library derived from Adafruit_GFX
-#include <Arduino_ST7735.h>  // Hardware-specific library for ST7735 (with or without CS pin)
+#include <Arduino_GFX_Library.h>
 #include "FreeSerif9pt7b.h"
 #include "FreeMonoBold9pt7b.h"
 #include <DHTesp.h>

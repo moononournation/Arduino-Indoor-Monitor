@@ -59,10 +59,7 @@ const char* arcgis_root_ca = \
 "-----END CERTIFICATE-----\n";
 
 /* display settings */
-#include <SPI.h>
-#include <Arduino_ESP32SPI.h>
-#include <Arduino_GFX.h>       // Core graphics library derived from Adafruit_GFX
-#include <Arduino_ST7735.h>    // Hardware-specific library for ST7735 (with or without CS pin)
+#include <Arduino_GFX_Library.h>
 #include "FreeMonoBold9pt7b.h"
 Arduino_ESP32SPI *bus = new Arduino_ESP32SPI(16 /* DC */, 5 /* CS */, 18 /* SCK */, 23 /* MOSI */, 19 /* MISO */);
 Arduino_ST7735 *tft = new Arduino_ST7735(bus, 17 /* RST */, 2 /* rotation */, false /* IPS */, 128 /* width */, 160 /* height */, 0 /* col offset 1 */, 0 /* row offset 1 */, 0 /* col offset 2 */, 0 /* row offset 2 */, false /* BGR */);
